@@ -1,0 +1,38 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Convert core business logic and message processing pipeline from Node.js to Python. This includes classify(), scoreMessage(), processBatch(), addMessage() functions that form the deterministic ranking engine. These are pure functions (except processBatch which mutates session state) and map directly to Python. Also includes session data structures (session dict with messages, queue, feedback, config). Independent of network I/O.",
+  "status": "pending",
+  "steps": [
+    "1. Create git worktree at /Users/akshayalnyn/Documents/Hackathon/Twitch Codex/.worktrees/python-conversion on new branch python-conversion. Verify worktree is on correct branch and isolated from main workspace.",
+    "2. Copy /Users/akshayalnyn/Documents/Hackathon/Twitch Codex/.env to worktree root. Copy /Users/akshayalnyn/Documents/Hackathon/Twitch Codex/public/ directory recursively to worktree.",
+    "3. Create requirements.txt with: Flask==3.0.0, python-dotenv==1.0.0, requests==2.31.0, websocket-client==1.6.4, pytest==7.4.3, pytest-asyncio==0.21.1",
+    "4. Create app.py skeleton: import Flask, dotenv, os; load_dotenv(); app = Flask(__name__, static_folder='public'); PORT = int(os.getenv('PORT', 3000))",
+    "5. Port session data structure from server.js lines 8-10 (newSession function) to Python. Create new_session() function returning dict with all keys: id (uuid4), config (defaults dict), messages (list), recentMessages (list), queue (list), feedback (dict), seen (set), clients (set), mode, status, connectionError, channel, paused, timer, socket, pendingSocket, reconnectAttempt, token, transcript, transcriptUpdatedAt, analyzing, pendingAnalysisIds (set), analysisStatus. Create global session = new_session().",
+    "6. Port norm() function from server.js line 11: lowercase, remove non-alphanumeric except spaces, collapse whitespace, strip. Use re.sub twice.",
+    "7. Port classify() function from server.js line 12: identical regex logic for issue/insight/question/other. Use re.search with re.IGNORECASE flag. Return strings 'issue', 'insight', 'question', 'other'.",
+    "8. Port scoreMessage() function from server.js line 13: takes message dict (with 'text' key), config dict, prior list; returns dict with R, Q, N, U, score, type. Preserve exact scoring logic: R base by type (.82/.70/.68/.12), activity keyword boost (+.17), boss/coding domain boosts (.95); Q by type and length with meme penalty; N novelty check (1-.88 or .12); U by type. Weight normalization: total = sum(config['weights'].values()) or 1; score = (R*w['R'] + Q*w['Q'] + N*w['N'] + U*w['U']) / total. Clamp score to [0, 1].",
+    "9. Port addMessage() function from server.js line 20: takes session dict and message dict (id, text, author, viewerId, time, source); deduplicates via seen set (max 5000, prune to 2000); appends to messages list (max 500) and recentMessages list (max 100); calls broadcast(). For now broadcast() is a stub that iterates session['clients'].",
+    "10. Port processBatch() function from server.js line 14: takes session dict; if paused or no messages, return; splice messages (batch = session['messages'][:], session['messages'].clear()); cluster by classify() kind and key (audio/freeze/functionality for issues, first 4 words for others, with overlap check using norm()); build clusters list with key, kind, text, author, viewerIds set, time, evidence list; for each cluster: compute itemId (sha1 hash of kind+key, first 14 hex chars), skip if feedback dismiss/irrelevant/answered, score with scoreMessage (pass transcript in context), urgent = kind=='issue' and len(viewerIds)>=3, create item dict (id, category Live Issue/Best Question/Community Insight, text, author, time, count, evidence, score, signals, reason, urgent, pinned), merge with existing queue item if present (max count, extend evidence slice last 12, preserve pinned, max time); prepend item to queue; after loop: filter queue by pinned or age <180000ms; sort by urgent desc, pinned desc, score desc; slice to 12 items; call broadcast() with type='state'. Preserve exact clustering logic from lines 14-16.",
+    "11. Create broadcast() stub: takes session dict and obj dict; for each client in session['clients'], call client.write() (placeholder, will be implemented in FEAT-002 with Flask SSE response objects).",
+    "12. Create publicState() function from server.js line 17: takes session dict, returns dict with mode, status, connectionError, channel, config, paused, queue, recent (last 24 recentMessages reversed), feedback (values mapped to action), twitchConfigured (bool), transcript, transcriptUpdatedAt, analysisStatus, nvidiaConfigured (bool). Extract keys exactly as in server.js.",
+    "13. Create pytest tests in worktree test/test_pipeline.py: port all 7 tests from test/pipeline.test.js: (1) stream context changes relevance ranking (assert coding score > cooking score), (2) thoughtful question outscores meme, (3) technical complaints classify as issue, (4) audio reports group by distinct viewers with urgent=True when count=3, (5) pinned items survive 600s age pruning, (6) weight normalization keeps score in [0,1], (7) invalid NVIDIA response (mock) keeps deterministic queue (will need mock for analyzeWithNvidia, stub it for now to set analysisStatus='fallback'). Use pytest fixtures for config and sample message factory.",
+    "14. Run pytest test/ in worktree and fix any errors until all 7 tests pass (NVIDIA test may be stubbed to skip/xfail for now since analyzeWithNvidia is in FEAT-002)."
+  ],
+  "acceptance_criteria": [
+    "git worktree exists at /Users/akshayalnyn/Documents/Hackathon/Twitch Codex/.worktrees/python-conversion on branch python-conversion",
+    "app.py contains new_session(), norm(), classify(), scoreMessage(), addMessage(), processBatch(), publicState(), broadcast() stub matching server.js logic",
+    "requirements.txt lists Flask, python-dotenv, requests, websocket-client, pytest, pytest-asyncio",
+    ".env and public/ directory copied to worktree",
+    "pytest test/test_pipeline.py runs all 7 tests from pipeline.test.js with identical assertions, all pass or NVIDIA test marked xfail",
+    "No errors in test output, functions return correct types and values"
+  ],
+  "verification": [
+    "cd /Users/akshayalnyn/Documents/Hackathon/Twitch\\ Codex/.worktrees/python-conversion && git branch --show-current (outputs: python-conversion)",
+    "cd /Users/akshayalnyn/Documents/Hackathon/Twitch\\ Codex/.worktrees/python-conversion && pip install -r requirements.txt (succeeds)",
+    "cd /Users/akshayalnyn/Documents/Hackathon/Twitch\\ Codex/.worktrees/python-conversion && pytest test/test_pipeline.py -v (all tests pass or 1 xfail)",
+    "cd /Users/akshayalnyn/Documents/Hackathon/Twitch\\ Codex/.worktrees/python-conversion && python -c 'from app import classify, scoreMessage; print(classify(\"audio is broken\"))' (outputs: issue)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

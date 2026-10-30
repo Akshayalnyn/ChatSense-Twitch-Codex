@@ -1,0 +1,41 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Implement Twitch EventSub WebSocket client in background thread for live chat message streaming. This includes connectEventSub() function that creates WebSocket connection, handles session_welcome/notification/session_reconnect/revocation messages, subscribes to channel.chat.message events, calls addMessage() for incoming chat, and implements reconnection logic with exponential backoff. Runs in daemon thread to avoid blocking Flask. Depends on FEAT-001 and FEAT-002.",
+  "status": "pending",
+  "steps": [
+    "1. Import websocket (from websocket-client library), threading, json, time in app.py.",
+    "2. Implement scheduleReconnect() function from server.js line 32: takes session dict, userId string, message string; if mode!='live' or reconnectTimer exists, return; set session['status']='reconnecting', session['connectionError']=message; increment session['reconnectAttempt']; broadcast state; if reconnectAttempt==1 broadcast error message; calculate delay = min(30000, 1000 * 2^min(reconnectAttempt-1, 5)) in ms; create threading.Timer for delay/1000 seconds that calls connectEventSub(session, userId) if mode=='live'; store in session['reconnectTimer']; start timer. Match server.js exponential backoff logic exactly.",
+    "3. Implement connectEventSub() function from server.js line 30: takes session dict, userId string, url (default 'wss://eventsub.wss.twitch.tv/ws'), migration (default False), oldSocket (default None). If session['mode']!='live' or no session['token'], return. Create WebSocket connection: ws = websocket.WebSocketApp(url, on_message=on_message, on_close=on_close, on_error=on_error). If migration, set session['pendingSocket']=ws; else session['socket']=ws. Define nested on_message(ws, raw): parse JSON; get message_type from metadata; handle session_welcome: if migration, swap socket (session['socket']=ws, session['pendingSocket']=None, reconnectAttempt=0, status='connected', connectionError=None, close oldSocket, broadcast state, return); else POST to /helix/eventsub/subscriptions via twitchApi() with body {type: channel.chat.message, version: 1, condition: {broadcaster_user_id: session['channel']['id'], user_id: userId}, transport: {method: websocket, session_id: payload.session.id}}; if status!=202 raise Exception with detail from response body; set status='connected', connectionError=None, reconnectAttempt=0, broadcast state. Handle notification: if subscription_type=='channel.chat.message', extract event payload, call addMessage(session, {id: message_id, text: message.text, author: chatter_user_name, viewerId: chatter_user_id, source: 'live', time: parse timestamp to epoch ms}). Handle session_reconnect: set status='reconnecting', broadcast state, call connectEventSub(session, userId, payload.session.reconnect_url, migration=True, oldSocket=ws). Handle revocation: set status='disconnected', connectionError with revocation reason, broadcast state. On exception in on_message: close ws if it's current socket, set status='disconnected', connectionError=exception message, broadcast state and error. Define on_close(ws, close_status, close_msg): if ws is session['socket'] and mode=='live', call scheduleReconnect(session, userId, 'Twitch chat connection was interrupted. Reconnecting…'). Define on_error(ws, error): if ws is socket or pendingSocket, set status='reconnecting', connectionError, broadcast state. Run ws.run_forever() in daemon thread (threading.Thread(target=ws.run_forever, daemon=True).start()). Wrap WebSocket creation in try/except, call scheduleReconnect on error. Match server.js lines 30-32 exactly including all message types and error handling.",
+    "4. Update POST /api/mode endpoint: when clearing sockets, check if session['socket'] exists and call session['socket'].close(); same for pendingSocket. Cancel session['reconnectTimer'] if exists.",
+    "5. Update GET /auth/twitch/callback endpoint: after setting session state, call connectEventSub(session, session['token']['user_id']) instead of placeholder pass.",
+    "6. Create integration test in test/test_integration.py: test OAuth callback flow (mock twitchApi calls), test demo mode full cycle (startDemo, addMessage, processBatch, queue population), test SSE stream (create test client, connect to /api/events, verify initial state message), test control endpoints (pause/resume, weights, interval). Use Flask test_client() fixture. Do not test actual Twitch WebSocket connection (requires live credentials), but verify connectEventSub() is called with correct arguments using mock.",
+    "7. Run pytest test/ in worktree to verify all tests pass (original 7 pipeline tests + new integration tests).",
+    "8. Start Flask server, open browser to http://localhost:3000, verify: (a) demo mode loads and displays demo messages in Recent chat panel, (b) SSE connection shows 'Listening for signals', (c) clicking 'Replay demo scenario' adds messages to queue, (d) queue shows Live Issue / Best Question / Community Insight cards with correct categories and scores, (e) clicking Pin/Dismiss/Answered updates queue, (f) adjusting weights in Scoring drawer updates scores, (g) static files (CSS, HTML) load correctly. Take screenshot or document verification in FEAT findings.",
+    "9. Test Twitch live mode OAuth flow: click 'Connect Twitch', verify redirect to Twitch, (requires real credentials in .env so may skip if testing in CI, but verify connectEventSub thread starts and WebSocket connect attempt is made by checking logs or status='connecting'). Document any auth flow issues in findings.",
+    "10. Stop Flask server, commit all changes in worktree: git add app.py requirements.txt .env public/ test/; git commit -m 'feat: convert ChatSense from Node.js/Express to Python/Flask\\n\\nPreserve all business logic, API endpoints, OAuth flow, SSE, WebSocket client, NVIDIA API integration, and demo mode. All 7 original tests pass plus new integration tests. Frontend public/index.html works without changes.'"
+  ],
+  "acceptance_criteria": [
+    "connectEventSub() function implemented with WebSocketApp, handles all message types (session_welcome, notification, session_reconnect, revocation) matching server.js logic",
+    "scheduleReconnect() implements exponential backoff reconnection matching server.js",
+    "WebSocket runs in daemon thread, does not block Flask requests",
+    "OAuth callback calls connectEventSub() with correct userId",
+    "POST /api/mode properly closes WebSocket connections and timers",
+    "Integration tests in test/test_integration.py cover demo mode, SSE, control endpoints, OAuth flow (mocked)",
+    "All tests pass: pytest test/ shows 10+ passing tests (7 pipeline + 3+ integration)",
+    "Manual browser testing confirms demo mode works: messages appear, queue updates, SSE streams, controls work",
+    "Code committed to git with feat: commit message"
+  ],
+  "verification": [
+    "cd /Users/akshayalnyn/Documents/Hackathon/Twitch\\ Codex/.worktrees/python-conversion && pytest test/ -v (all tests pass, 10+ total)",
+    "cd /Users/akshayalnyn/Documents/Hackathon/Twitch\\ Codex/.worktrees/python-conversion && python app.py & (server starts)",
+    "Open http://localhost:3000 in browser, verify demo mode displays messages and queue updates",
+    "curl http://localhost:3000/api/events (SSE stream with type:message events as demo runs)",
+    "curl -X POST http://localhost:3000/api/demo/next (triggers message burst, queue updates)",
+    "curl -X POST http://localhost:3000/api/control -H 'Content-Type: application/json' -d '{\"action\":\"pause\"}' && curl http://localhost:3000/api/state | jq .paused (outputs: true)",
+    "kill Flask server",
+    "cd /Users/akshayalnyn/Documents/Hackathon/Twitch\\ Codex/.worktrees/python-conversion && git log --oneline -1 | grep 'feat: convert ChatSense' (commit exists)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

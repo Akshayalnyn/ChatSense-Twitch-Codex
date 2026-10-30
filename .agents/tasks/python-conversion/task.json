@@ -1,0 +1,7 @@
+{
+  "task_id": "python-conversion",
+  "task_description": "Convert ChatSense Twitch chat analysis app from Node.js/Express to Python (Flask), preserving all business logic, API endpoints, and functionality exactly",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
+  "blocked_reason": null
+}

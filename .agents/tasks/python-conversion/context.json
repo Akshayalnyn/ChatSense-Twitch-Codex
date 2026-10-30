@@ -1,0 +1,21 @@
+{
+  "project_type": "Twitch chat analysis web app with SSE, WebSocket client, background timers; currently Node.js/Express, converting to Python/Flask",
+  "language": "Python 3.10+",
+  "build_system": "pip with requirements.txt",
+  "test_framework": "pytest with pytest-asyncio",
+  "build_command": "pip install -r requirements.txt",
+  "test_command": "pytest test/",
+  "verification_instructions": "1. Install dependencies: pip install -r requirements.txt\n2. Run tests: pytest test/\n3. Start server: python app.py (loads .env)\n4. Test SSE: curl http://localhost:3000/api/events\n5. Test API: curl http://localhost:3000/api/state\n6. Test static files: curl http://localhost:3000/\n7. Test OAuth flow: visit http://localhost:3000/auth/twitch\n8. Test demo mode endpoints",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "Must run in worktree /Users/akshayalnyn/Documents/Hackathon/Twitch Codex/.worktrees/python-conversion on branch python-conversion. Never modify files in main workspace /Users/akshayalnyn/Documents/Hackathon/Twitch Codex. Use python-dotenv to load .env. Flask SSE requires Response with mimetype text/event-stream and yield. WebSocket client (websocket-client library) runs in background thread. Batch timer runs in background thread with threading.Timer.",
+  "contribution_requirements": "Preserve exact business logic from server.js. All API endpoints must remain identical. Frontend public/index.html must work without changes. All environment variables preserved (.env). NVIDIA API integration exact: endpoint https://integrate.api.nvidia.com/v1/chat/completions, model nvidia/nemotron-3.5-bolt-e4b, Bearer auth, temperature 0.2, response_format json_object. OAuth flow identical. Demo mode scenarios preserved exactly.",
+  "key_patterns": "server.js: Express app with 600+ lines, all logic in one file; global session object; SSE via res.write; WebSocket client for Twitch EventSub; setInterval for batch processing; classify() function uses regex; scoreMessage() calculates RQNU scores; processBatch() clusters messages and updates queue; analyzeWithNvidia() calls NVIDIA API; OAuth state stored in Map with cookie validation; demo mode uses setInterval with scenarios array. Tests: node:test with assert.equal/assert.ok, export functions for testing. Frontend: vanilla JS, EventSource for SSE, fetch for API calls, no changes needed.",
+  "relevant_files": [
+    "/Users/akshayalnyn/Documents/Hackathon/Twitch Codex/server.js",
+    "/Users/akshayalnyn/Documents/Hackathon/Twitch Codex/public/index.html",
+    "/Users/akshayalnyn/Documents/Hackathon/Twitch Codex/test/pipeline.test.js",
+    "/Users/akshayalnyn/Documents/Hackathon/Twitch Codex/.env",
+    "/Users/akshayalnyn/Documents/Hackathon/Twitch Codex/package.json"
+  ],
+  "directory_structure": "/ (root): server.js (main app), package.json, .env, pnpm-lock.yaml\n/public/: index.html (frontend SPA, no changes needed)\n/test/: pipeline.test.js (7 unit tests covering classify, scoreMessage, processBatch, pinning, normalization, NVIDIA fallback)\n/node_modules/: dependencies (express, ws)\nWorktree target: /Users/akshayalnyn/Documents/Hackathon/Twitch Codex/.worktrees/python-conversion\nPython structure: app.py (main), requirements.txt, .env (copied), /public/ (copied), /test/ (pytest tests)"
+}
